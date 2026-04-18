@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Assiston</title>
+    <script src="/assets/lib/tailwind.js"></script>
+    <script src="/assets/utils/base.js"></script>
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 
+                            400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 
+                            800: '#3730a3', 900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+
+        const API_BASE = "http://localhost:5000";
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('error-message');
+            const btn = document.getElementById('login-btn');
+
+            errorEl.classList.add('hidden');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch animate-spin"></i> Checking...';
+
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    const userString = JSON.stringify(data.user);
+                    const userBase64 = btoa(unescape(encodeURIComponent(userString)));
+                    
+                    document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Strict`;
+                    document.cookie = `user=${userBase64}; path=/; max-age=86400; SameSite=Strict`;
+                    
+                    //window.location.href = 'index.html';
+                } else {
+                    errorEl.innerText = data.error || 'Invalid credentials';
+                    errorEl.classList.remove('hidden');
+                    btn.disabled = false;
+                    btn.innerText = 'Sign In';
+                }
+            } catch (err) {
+                errorEl.innerText = 'Connection to server failed';
+                errorEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerText = 'Sign In';
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex items-center justify-center p-6">
+    
+    <div class="max-w-md w-full">
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl text-white text-2xl mb-6 shadow-xl shadow-indigo-500/20">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <h1 class="text-3xl font-black tracking-tight mb-2">Welcome Back</h1>
+            <p class="text-slate-500 dark:text-slate-400 font-medium">Log in to manage your support widgets.</p>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none">
+            <div id="error-message" class="hidden mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl border border-red-100 dark:border-red-800/50">
+                Invalid email or password.
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Email Address</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400">
+                            <i class="fas fa-envelope"></i>
+                        </span>
+                        <input type="email" id="email" required placeholder="name@company.com" 
+                            class="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2 ml-1">Password</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400">
+                            <i class="fas fa-lock"></i>
+                        </span>
+                        <input type="password" id="password" required placeholder="••••••••" 
+                            class="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between py-2">
+                    <label class="flex items-center gap-2 cursor-pointer group">
+                        <input type="checkbox" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 bg-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                        <span class="text-xs font-bold text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors">Remember me</span>
+                    </label>
+                    <a href="#" class="text-xs font-bold text-indigo-600 hover:text-indigo-500">Forgot password?</a>
+                </div>
+
+                <button type="submit" id="login-btn"
+                    class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-sm shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-wait">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800 text-center">
+                <p class="text-sm text-slate-500 font-medium">
+                    Don't have an account? 
+                    <a href="/register/" class="text-indigo-600 font-bold hover:underline">Create Account</a>
+                </p>
+            </div>
+        </div>
+
+        <p class="mt-10 text-center text-xs text-slate-400 font-bold uppercase tracking-widest">
+            &copy; 2024 Assiston Inc.
+        </p>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inbox | Assiston</title>
+    <script src="/assets/lib/tailwind.js"></script>
+    <script src="/assets/utils/base.js"></script>
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 
+                            400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 
+                            800: '#3730a3', 900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+
+        const getCookie = (name) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const widgetId = urlParams.get('id');
+        const token = getCookie('token');
+        let groupedConversations = {}; 
+        let widgetTheme = '#6366f1';
+        let activeGroupId = null;
+
+        if (!token || !widgetId) {
+            window.location.href = 'index.html'; 
+        }
+
+        async function init() {
+            await fetchWidgetMeta();
+            await fetchRequests();
+        }
+
+        async function fetchWidgetMeta() {
+            try {
+                const response = await fetch(`http://localhost:5000/api/widgets`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const widgets = await response.json();
+                const widget = widgets.find(w => w.id === widgetId);
+                if (widget) {
+                    widgetTheme = widget.color;
+                    document.getElementById('widget-name-heading').innerText = widget.name;
+                    document.querySelectorAll('.theme-accent-color').forEach(el => el.style.color = widgetTheme);
+                    document.querySelectorAll('.theme-accent-bg').forEach(el => el.style.backgroundColor = widgetTheme);
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        async function fetchRequests() {
+            try {
+                const response = await fetch(`http://localhost:5000/api/requests/${widgetId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const rawRequests = await response.json();
+                groupRequests(rawRequests);
+                renderSidebar();
+            } catch (err) { console.error(err); }
+        }
+
+        function groupRequests(requests) {
+            groupedConversations = {};
+            requests.forEach(req => {
+                const groupId = req.email || req.device || 'anonymous';
+                if (!groupedConversations[groupId]) {
+                    groupedConversations[groupId] = {
+                        id: groupId,
+                        email: req.email,
+                        device: req.device,
+                        browser: req.browser,
+                        status: req.status,
+                        messages: []
+                    };
+                }
+                groupedConversations[groupId].messages.push(req);
+            });
+
+            Object.values(groupedConversations).forEach(group => {
+                group.messages.sort((a, b) => new Date(b.date) - new Date(a.date));
+                group.latestDate = group.messages[0].date;
+                group.latestMessage = group.messages[0].message;
+            });
+        }
+
+        function renderSidebar() {
+            const container = document.getElementById('requests-list');
+            const groups = Object.values(groupedConversations).sort((a, b) => new Date(b.latestDate) - new Date(a.latestDate));
+
+            if (groups.length === 0) {
+                container.innerHTML = `
+                    <div class="p-10 text-center">
+                        <i class="fas fa-tray text-slate-300 text-3xl mb-3 block"></i>
+                        <p class="text-slate-500 text-sm">No conversations found.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = groups.map(g => `
+                <div onclick="openConversation('${g.id}')" 
+                     class="p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all flex items-center gap-4 ${activeGroupId === g.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-l-indigo-500' : ''}">
+                    <div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center text-slate-400">
+                        <i class="fas fa-user-circle text-xl"></i>
+                    </div>
+                    <div class="flex-grow min-w-0">
+                        <div class="flex justify-between items-center mb-0.5">
+                            <span class="font-bold text-xs truncate dark:text-white">${g.email || 'Anonymous User'}</span>
+                            <span class="text-[10px] text-slate-400">${g.latestDate || 'Just now'}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 truncate">${g.latestMessage}</p>
+                    </div>
+                    ${g.messages.length > 1 ? `<span class="bg-slate-200 dark:bg-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">${g.messages.length}</span>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function getStatusClass(status) {
+            switch(status?.toLowerCase()) {
+                case 'solved': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
+                case 'errored': return 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400';
+                case 'pending': return 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400';
+                default: return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+            }
+        }
+
+        function openConversation(id) {
+            activeGroupId = id;
+            const group = groupedConversations[id];
+            if (!group) return;
+
+            renderSidebar();
+
+            const detail = document.getElementById('request-detail');
+            const messagesHtml = [...group.messages].reverse().map(m => `
+                <div class="flex flex-col items-start mb-6">
+                    <div class="max-w-[85%] bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none border border-slate-200/50 dark:border-slate-700/50">
+                        <p class="text-sm leading-relaxed dark:text-slate-300">${m.message}</p>
+                    </div>
+                    <span class="mt-1 text-[10px] text-slate-400">${m.date || 'Just now'}</span>
+                </div>
+            `).join('');
+
+            detail.innerHTML = `
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-start mb-6 pb-6 border-b border-slate-100 dark:border-slate-800">
+                        <div class="flex items-center gap-4">
+                             <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 text-xl">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-lg font-black dark:text-white">${group.email || 'Anonymous User'}</h2>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusClass(group.status)}">
+                                        ${group.status}
+                                    </span>
+                                    <span class="text-[11px] text-slate-400"><i class="fas fa-laptop mr-1 ml-2"></i> ${group.device || 'Desktop'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                             <button onclick="updateStatus('${group.messages[0].id}', 'Solved')" class="w-10 h-10 flex items-center justify-center bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-200 dark:shadow-none" title="Mark Solved"><i class="fas fa-check"></i></button>
+                             <button onclick="updateStatus('${group.messages[0].id}', 'Errored')" class="w-10 h-10 flex items-center justify-center bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-200 dark:shadow-none" title="Mark Error"><i class="fas fa-exclamation-triangle"></i></button>
+                        </div>
+                    </div>
+
+                    <div id="message-thread" class="flex-grow overflow-y-auto space-y-2 mb-6 pr-2 custom-scrollbar">
+                        ${messagesHtml}
+                    </div>
+
+                    <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800">
+                        <textarea id="reply-box" placeholder="Type your response to ${group.email || 'user'}..." class="w-full h-24 bg-transparent border-none focus:ring-0 dark:text-white resize-none text-sm p-0 mb-3" spellcheck="false"></textarea>
+                        <div class="flex justify-between items-center">
+                            <p class="text-[10px] text-slate-400">Response will be sent via email.</p>
+                            <button onclick="sendReply('${group.id}')" class="px-6 py-2 bg-indigo-600 text-white text-xs font-black rounded-xl hover:opacity-90 transition-all flex items-center gap-2 theme-accent-bg">
+                                <i class="fas fa-paper-plane"></i> SEND
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const thread = document.getElementById('message-thread');
+            thread.scrollTop = thread.scrollHeight;
+        }
+
+        async function updateStatus(requestId, newStatus) {
+            try {
+                const response = await fetch(`http://localhost:5000/api/requests/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ requestId, status: newStatus })
+                });
+                if (response.ok) {
+                    await fetchRequests();
+                    openConversation(activeGroupId);
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function sendReply(id) {
+            const text = document.getElementById('reply-box').value;
+            if(!text) return;
+            
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-circle-notch animate-spin"></i> SENDING...`;
+
+            setTimeout(() => {
+                document.getElementById('reply-box').value = '';
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-paper-plane"></i> SEND`;
+                
+                const toast = document.createElement('div');
+                toast.className = "fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 bg-slate-900 text-white text-xs font-bold rounded-full shadow-2xl z-50 flex items-center gap-3 animate-bounce";
+                toast.innerHTML = `<i class="fas fa-check-circle text-emerald-400"></i> Reply sent successfully!`;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }, 800);
+        }
+
+        window.onload = init;
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased dark:bg-slate-950 dark:text-slate-200 min-h-screen overflow-hidden">
+
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 dark:bg-slate-900/80 dark:border-slate-800 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-6 flex justify-between items-center h-16">
+            <div class="flex items-center gap-6">
+                <a href="dashboard.html" class="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-all">
+                    <i class="fas fa-chevron-left text-xs"></i>
+                </a>
+                <div class="h-6 w-[1px] bg-slate-200 dark:bg-slate-800"></div>
+                <h1 class="font-black text-sm tracking-tight flex items-center gap-3 uppercase">
+                    <i class="fas fa-inbox theme-accent-color"></i> 
+                    <span id="widget-name-heading" class="opacity-70">Loading...</span>
+                </h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="px-3 py-1 bg-emerald-500/10 text-emerald-500 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">
+                    Live Sync
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto flex h-[calc(100vh-64px)] overflow-hidden">
+        <aside class="w-full md:w-80 border-r border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800 flex flex-col h-full shrink-0">
+            <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h2 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Conversations</h2>
+                <button onclick="fetchRequests()" class="text-slate-400 hover:text-indigo-500 transition-colors"><i class="fas fa-sync-alt text-[10px]"></i></button>
+            </div>
+            <div class="flex-grow overflow-y-auto custom-scrollbar" id="requests-list">
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 animate-pulse flex gap-4">
+                    <div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800"></div>
+                    <div class="flex-grow">
+                        <div class="h-3 w-24 bg-slate-100 dark:bg-slate-800 rounded mb-2"></div>
+                        <div class="h-2 w-full bg-slate-50 dark:bg-slate-800 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="hidden md:flex flex-grow bg-white dark:bg-slate-900 flex-col relative" id="request-detail">
+            <div class="h-full flex flex-col items-center justify-center text-slate-400">
+                <div class="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-6">
+                    <i class="fas fa-comments text-3xl opacity-20"></i>
+                </div>
+                <p class="text-xs font-bold uppercase tracking-widest opacity-40">Select a person to start</p>
+            </div>
+        </section>
+    </main>
+
+</body>
+</html>

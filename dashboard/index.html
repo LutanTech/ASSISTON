@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Assiston</title>
+    <script src="/assets/lib/tailwind.js"></script>
+    <script src="/assets/utils/base.js"></script>
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 
+                            400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 
+                            800: '#3730a3', 900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+
+        let currentWidgets = [];
+        let currentRequests = [];
+
+        const getCookie = (name) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        const getUser = () => {
+            const userEncoded = getCookie('user');
+            if (!userEncoded) return null;
+            try {
+                const decoded = atob(userEncoded);
+                return JSON.parse(decodeURIComponent(escape(decoded)));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        const showTab = (tabId) => {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(`${tabId}-content`).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(i => {
+                i.classList.remove('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-900/20', 'dark:text-indigo-400');
+                i.classList.add('text-slate-600', 'dark:text-slate-400');
+            });
+            
+            const activeNav = document.querySelector(`[onclick="showTab('${tabId}')"]`);
+            if(activeNav) {
+                activeNav.classList.add('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-900/20', 'dark:text-indigo-400');
+                activeNav.classList.remove('text-slate-600', 'dark:text-slate-400');
+            }
+            
+            document.getElementById('page-title').innerText = tabId.charAt(0).toUpperCase() + tabId.slice(1);
+        };
+
+        async function loadDashboardData() {
+            const token = getCookie('token');
+            const user = getUser();
+            
+            if (!token || !user) {
+                window.location.href = '/';
+                return;
+            }
+
+            document.getElementById('user-name').innerText = user.name || 'User';
+
+            try {
+                const wRes = await fetch(`${API_BASE}/api/widgets?user_id=${user.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                currentWidgets = await wRes.json();
+                renderWidgets();
+                renderWidgetsList();
+
+                let allReqs = [];
+                for (const w of currentWidgets) {
+                    const rRes = await fetch(`${API_BASE}/api/requests/${w.id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await rRes.json();
+                    allReqs = [...allReqs, ...data];
+                }
+                currentRequests = allReqs.sort((a, b) => new Date(b.date) - new Date(a.date));
+                renderRecentRequests();
+                renderInbox();
+                updateStats();
+            } catch (err) {
+                console.error("Dashboard load error", err);
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-widgets').innerText = currentWidgets.length;
+            document.getElementById('stat-requests').innerText = currentRequests.length;
+        }
+
+        function renderWidgets() {
+            const grid = document.getElementById('widgets-grid-overview');
+            if (currentWidgets.length === 0) {
+                grid.innerHTML = `<div class="col-span-full p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                    <p class="text-slate-500">No widgets found.</p>
+                </div>`;
+                return;
+            }
+
+            grid.innerHTML = currentWidgets.slice(0, 3).map(w => `
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style="background-color: ${w.color}20; color: ${w.color}">
+                        <i class="fas fa-comment-dots"></i>
+                    </div>
+                    <h3 class="font-bold dark:text-white mb-1">${w.name}</h3>
+                    <p class="text-xs text-slate-500">${w.domain || 'All Domains'}</p>
+                </div>
+            `).join('');
+        }
+
+        function renderWidgetsList() {
+            const container = document.getElementById('full-widgets-list');
+            container.innerHTML = currentWidgets.map(w => `
+                <div class="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl mb-3">
+                    <div class="flex items-center gap-4">
+                        <div class="w-2 h-10 rounded-full" style="background-color: ${w.color}"></div>
+                        <div>
+                            <p class="font-bold dark:text-white">${w.name}</p>
+                            <p class="text-xs text-slate-500">${w.domain || 'Global'}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.location.href='/widget-details/?id=${w.id}'" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">Manage '/widget-details/?id=${w.id}'</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderRecentRequests() {
+            const container = document.getElementById('recent-requests-overview');
+            if (currentRequests.length === 0) {
+                container.innerHTML = '<p class="text-slate-500 text-center py-10">No recent activity.</p>';
+                return;
+            }
+
+            container.innerHTML = currentRequests.slice(0, 4).map(r => `
+                <div class="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                            ${r.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold dark:text-white">${r.email}</p>
+                            <p class="text-[10px] text-slate-400 truncate max-w-[150px]">${r.message}</p>
+                        </div>
+                    </div>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-amber-50 text-amber-600">${r.status}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderInbox() {
+            const container = document.getElementById('inbox-list');
+            container.innerHTML = currentRequests.map(r => `
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div class="flex gap-4">
+                        <input type="checkbox" class="mt-1">
+                        <div>
+                            <p class="text-sm font-bold dark:text-white">${r.email}</p>
+                            <p class="text-xs text-slate-500">${r.message}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] text-slate-400 mb-1">${r.date}</p>
+                        <span class="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">${r.browser}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function logout() {
+            document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            document.cookie = "user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            window.location.href = '/';
+        }
+
+        window.onload = loadDashboardData;
+    </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-sans min-h-screen flex">
+
+    <!-- Sidebar -->
+    <aside class="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hidden lg:flex flex-col sticky top-0 h-screen">
+        <div class="p-6">
+            <div class="flex items-center gap-3 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-10">
+                <i class="fas fa-bolt text-2xl"></i> Assiston
+            </div>
+            <nav class="space-y-1">
+                <button onclick="showTab('overview')" class="nav-item w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold transition-all">
+                    <i class="fas fa-th-large"></i> Overview
+                </button>
+                <button onclick="showTab('widgets')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                    <i class="fas fa-puzzle-piece"></i> Widgets
+                </button>
+                <button onclick="showTab('inbox')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                    <i class="fas fa-inbox"></i> Inbox
+                </button>
+                <button onclick="showTab('team')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
+                    <i class="fas fa-users"></i> Team
+                </button>
+            </nav>
+        </div>
+        <div class="mt-auto p-6 border-t border-slate-100 dark:border-slate-800">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold uppercase" id="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-bold truncate dark:text-white" id="user-name">...</p>
+                    <p class="text-[10px] text-slate-400">Standard Plan</p>
+                </div>
+            </div>
+            <button onclick="logout()" class="w-full py-2 text-xs font-bold text-slate-400 hover:text-red-500 flex items-center gap-2 transition-colors">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-4 lg:p-10 max-w-6xl mx-auto w-full">
+        <header class="mb-10">
+            <h1 class="text-2xl font-extrabold dark:text-white" id="page-title">Overview</h1>
+            <p class="text-slate-500 dark:text-slate-400 text-sm">Welcome back to your command center.</p>
+        </header>
+
+        <!-- Overview Tab -->
+        <div id="overview-content" class="tab-content">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">My Widgets</p>
+                    <h2 class="text-3xl font-black dark:text-white" id="stat-widgets">0</h2>
+                </div>
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Total Requests</p>
+                    <h2 class="text-3xl font-black dark:text-white" id="stat-requests">0</h2>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2">
+                    <h2 class="text-lg font-bold dark:text-white mb-4">Top Widgets</h2>
+                    <div id="widgets-grid-overview" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold dark:text-white mb-4">Recent Activity</h2>
+                    <div id="recent-requests-overview" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2 shadow-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Widgets Tab -->
+        <div id="widgets-content" class="tab-content hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-bold dark:text-white">All Widgets</h2>
+                <button class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all">+ New Widget</button>
+            </div>
+            <div id="full-widgets-list"></div>
+        </div>
+
+        <!-- Inbox Tab -->
+        <div id="inbox-content" class="tab-content hidden">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <span class="text-xs font-bold text-slate-500 uppercase">Incoming Messages</span>
+                    <div class="flex gap-2">
+                        <button class="p-1.5 text-slate-400 hover:text-indigo-600"><i class="fas fa-sync"></i></button>
+                    </div>
+                </div>
+                <div id="inbox-list"></div>
+            </div>
+        </div>
+
+        <!-- Team Tab -->
+        <div id="team-content" class="tab-content hidden">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center shadow-sm">
+                <div class="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center text-indigo-600 mx-auto mb-6">
+                    <i class="fas fa-users text-3xl"></i>
+                </div>
+                <h2 class="text-xl font-bold dark:text-white mb-2">Team Collaboration</h2>
+                <p class="text-slate-500 max-w-sm mx-auto mb-6">Invite your teammates to help manage support requests and customize widgets together.</p>
+                <button class="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all">Invite Team Member</button>
+            </div>
+        </div>
+
+    </main>
+</body>
+</html>
