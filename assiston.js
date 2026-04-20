@@ -15,7 +15,8 @@
         }
         window.d_id = device_id
         window.supportToken = token;
-        window.API_BASE = 'http://127.0.0.1:5000';
+        // window.API_BASE = 'http://127.0.0.1:5000';
+        window.API_BASE = 'https://asisston.eu.pythonanywhere.com';
         l_w_a(0)
         let tries = 0
 
