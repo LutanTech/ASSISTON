@@ -7,6 +7,7 @@
     <script src="/assets/lib/tailwind.js"></script>
     <script src="/assets/utils/base.js"></script>
     <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> -->
+     <script src="/assets/utils/base.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -23,7 +24,6 @@
             }
         }
 
-        const API_BASE = "http://localhost:5000";
 
         async function handleLogin(e) {
             e.preventDefault();
@@ -52,7 +52,7 @@
                     document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Strict`;
                     document.cookie = `user=${userBase64}; path=/; max-age=86400; SameSite=Strict`;
                     
-                    //window.location.href = 'index.html';
+                    window.location.href = '/dashboard';
                 } else {
                     errorEl.innerText = data.error || 'Invalid credentials';
                     errorEl.classList.remove('hidden');

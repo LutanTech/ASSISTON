@@ -16,6 +16,37 @@
         window.d_id = device_id
         window.supportToken = token;
         window.API_BASE = 'http://127.0.0.1:5000';
+        l_w_a(0)
+        let tries = 0
+
+        function l_w_a(tries){
+        tries = parseInt(tries) + 1
+        fetch(`${API_BASE}/l/w/r?wid=${token}`)
+        .then(r=>r.json())
+        .then(data=>{
+            if(data.success){
+                console.log(data)
+            } else{
+                if(tries < 5){
+                    setTimeout(() => {
+                      l_w_a(tries)  
+                    }, 3000);
+                
+                } else{
+                    console.log('Max retries reached')
+                }
+            }
+        }).catch(e=>{
+            if(tries < 5){
+                setTimeout(() => {
+                    l_w_a(tries)  
+                  }, 3000);
+                } else{
+                    console.log('Max retries reached')
+                }
+            console.log(e.message)
+        })
+        }
 
         const style = document.createElement('style');
         style.textContent = `

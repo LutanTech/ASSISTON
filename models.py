@@ -15,12 +15,15 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     name = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    
     def to_dict(self):
         return{
             'id':self.id,
             'email':self.email,
             'name':self.name,
-            'joined':self.created_at
+            'joined':self.created_at,
+            'is_active':self.is_active
         }
 
 class Widget(db.Model):
@@ -31,6 +34,7 @@ class Widget(db.Model):
     color = db.Column(db.String(7), default="#6366f1")
     is_active = db.Column(db.Boolean, default=True)
     auto_reply = db.Column(db.Boolean, default=False)
+    requests = db.Column(db.Integer, default=0)
 
 class SupportRequest(db.Model):
     id = db.Column(db.String(20), primary_key=True, default=lambda: generate_unique_id("req"))

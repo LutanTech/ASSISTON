@@ -33,11 +33,11 @@ def generate_auth_token(user_id):
 
     sig = hmac.new(SECRET_KEY, payload_b64.encode(), hashlib.sha256).hexdigest()
 
-    return f"{payload_b64}::{sig}"
+    return f"{sig}_tkn_{payload_b64}"
 
-def verify_auth_token(token):
+def verify_auth_token(token, expected_id):
     try:
-        payload_b64, sig = token.split("::")
+        sig, payload_b64 = token.split("_tkn_")
 
         expected = hmac.new(
             SECRET_KEY,
@@ -46,15 +46,18 @@ def verify_auth_token(token):
         ).hexdigest()
 
         if not hmac.compare_digest(sig, expected):
-            return None
+            return False
 
         payload = base64.urlsafe_b64decode(payload_b64.encode()).decode()
         user_id, ts = payload.split(":")
 
         if time.time() - int(ts) > 72 * 3600:
-            return None
+            return False
+        
+        if not user_id == expected_id:
+            return False
 
-        return user_id
+        return True
 
     except Exception:
-        return None
+        return False

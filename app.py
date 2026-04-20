@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import sqlalchemy
+import werkzeug
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
 
 from models import db, User, Widget, SupportRequest, RequestMessage
-from utils import detect_device, detect_browser, generate_auth_token
+from utils import detect_device, detect_browser, generate_auth_token, verify_auth_token
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///assiston.db'
@@ -11,9 +14,33 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 CORS(app)
 db.init_app(app)
+migrate = Migrate(app, db)
 
 with app.app_context():
     db.create_all()
+
+
+def verify_user(uid):
+    user = User.query.filter_by(id=uid).first()
+    if not user:
+        return False
+    if not user.is_active:
+        return False
+    return True
+
+@app.route('/l/w/r', methods=['GET'])
+def log_request():
+    wid = request.args.get('wid')
+    w = Widget.query.filter_by(id=wid).first()
+    if w:
+        initial = w.requests
+        if initial:
+            w.requests = initial + 1
+        else:
+            w.requests = 1
+        db.session.commit()
+        return jsonify({'success':True})
+    return jsonify({'success': False})
 
 # REGISTER
 @app.route('/register', methods=['POST'])
@@ -99,9 +126,15 @@ def support():
 # WIDGETS
 @app.route('/api/widgets', methods=['GET'])
 def get_widgets():
-    user_id = request.args.get('user_id')
-
-    widgets = Widget.query.filter_by(owner_id=user_id).all()
+    uid = request.args.get('uid')
+    token= request.args.get('token')
+    
+    if not verify_user(uid):
+        return jsonify({'error':'User not found or account deactivated'}), 404
+    
+    if not verify_auth_token(token, uid):
+        return jsonify({'error':'Unauthorized'}), 401
+    widgets = Widget.query.filter_by(owner_id=uid).all()
 
     return jsonify([{
         "id": w.id,
@@ -115,6 +148,19 @@ def get_widgets():
 @app.route('/api/widgets', methods=['POST'])
 def create_widget():
     data = request.json
+    token = data.get('token')
+    
+    uid = data.get('owner_id')
+    
+    user = User.query.filter_by(id=uid).first()
+    
+    if not user:
+        return jsonify({'error':'Failed to initialize user. Please login again'}), 400
+    
+    if not verify_auth_token(token, user.id):
+        return jsonify({'error':'Unauthorized'}), 401
+    
+    print(verify_auth_token(token, user.id))
 
     widget = Widget(
         name=data.get('name'),
@@ -136,6 +182,14 @@ def create_widget():
 @app.route('/api/requests/<widget_id>', methods=['GET'])
 def get_requests(widget_id):
     reqs = SupportRequest.query.filter_by(widget_id=widget_id).all()
+    uid = request.args.get('uid')
+    token= request.args.get('token')
+    
+    if not verify_user(uid):
+        return jsonify({'error':'User not found or account deactivated'}), 404
+    
+    if not verify_auth_token(token, uid):
+        return jsonify({'error':'Unauthorized'}), 401
 
     return jsonify([{
         "id": r.id,
